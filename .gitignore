@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+media/
+progress.json
+problems.json
+balancer.json
+.DS_Store
+.env

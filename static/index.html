@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Билеты — тренировка</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Экзаменационные билеты</h1>
+    <div id="stats" class="stats"></div>
+    <nav class="tab-bar">
+      <button type="button" class="tab active" data-tab="practice">Тренировка</button>
+      <button type="button" class="tab" data-tab="exam">Экзамен</button>
+      <button type="button" class="tab" data-tab="problems">Ошибки</button>
+      <button type="button" class="tab" data-tab="complicated">Сложные</button>
+      <button type="button" class="tab" data-tab="balancer">Балансир</button>
+    </nav>
+  </header>
+
+  <!-- Practice tab -->
+  <main id="tabPractice">
+    <div class="review-bar">
+      <button type="button" id="btnReviewOk" class="btn-secondary">Верные</button>
+      <button type="button" id="btnReviewBad" class="btn-secondary">Ошибки</button>
+      <button type="button" id="btnReset" class="btn-danger">Сбросить</button>
+      <span class="jump-group">
+        <input type="number" id="jumpInput" min="1" placeholder="№" class="jump-input" />
+        <button type="button" id="btnJump" class="btn-secondary">Перейти</button>
+      </span>
+    </div>
+    <aside id="reviewPanel" class="review-panel" hidden>
+      <div class="review-head">
+        <span id="reviewTitle"></span>
+        <button type="button" id="reviewClose" class="btn-close" aria-label="Закрыть">×</button>
+      </div>
+      <ul id="reviewList" class="review-list"></ul>
+    </aside>
+    <p id="err" class="err" hidden></p>
+    <p id="qIndex" class="q-index"></p>
+    <figure id="fig" class="fig" hidden>
+      <img id="qimg" alt="" />
+    </figure>
+    <p id="stem" class="stem"></p>
+    <form id="form">
+      <div id="opts" class="opts"></div>
+      <div class="actions">
+        <button type="submit" id="submitBtn">Проверить</button>
+        <button type="button" id="nextBtn" hidden>Следующий</button>
+        <button type="button" id="explainBtn" class="btn-secondary" hidden>Объяснить</button>
+      </div>
+    </form>
+    <div class="actions extra-actions">
+      <a id="pageLink" class="btn-secondary" target="_blank" rel="noopener" hidden>Оригинал</a>
+    </div>
+    <p id="feedback" class="feedback" hidden></p>
+    <div id="explanation" class="explanation" hidden></div>
+  </main>
+
+  <!-- Exam tab -->
+  <section id="tabExam" class="tab-content" hidden>
+    <div id="examIntro">
+      <p>20 вопросов. Для сдачи нужно ответить правильно минимум на 18.</p>
+      <button type="button" id="btnExamStart" class="btn-primary">Начать экзамен</button>
+    </div>
+    <div id="examActive" hidden>
+      <div id="examProgress" class="exam-progress"></div>
+      <p id="examQIndex" class="q-index"></p>
+      <figure id="examFig" class="fig" hidden>
+        <img id="examImg" alt="" />
+      </figure>
+      <p id="examStem" class="stem"></p>
+      <form id="examForm">
+        <div id="examOpts" class="opts"></div>
+        <div class="actions">
+          <button type="submit" id="examSubmitBtn">Проверить</button>
+          <button type="button" id="examNextBtn" hidden>Следующий</button>
+          <button type="button" id="examExplainBtn" class="btn-secondary" hidden>Объяснить</button>
+        </div>
+      </form>
+      <div class="actions extra-actions">
+        <a id="examPageLink" class="btn-secondary" target="_blank" rel="noopener" hidden>Оригинал</a>
+      </div>
+      <p id="examFeedback" class="feedback" hidden></p>
+      <div id="examExplanation" class="explanation" hidden></div>
+    </div>
+    <div id="examResult" class="exam-result" hidden></div>
+  </section>
+
+  <!-- Problems / Errors tab -->
+  <section id="tabProblems" class="tab-content" hidden>
+    <div class="problems-head">
+      <p id="problemsCount" class="stats"></p>
+      <button type="button" id="btnProblemsExam" class="btn-primary">Экзамен из ошибок</button>
+      <button type="button" id="btnProblemsClear" class="btn-danger">Очистить</button>
+    </div>
+    <ul id="problemsList" class="review-list"></ul>
+    <p id="problemsEmpty" class="review-empty" hidden>Ошибок пока нет</p>
+  </section>
+
+  <!-- Complicated tab -->
+  <section id="tabComplicated" class="tab-content" hidden>
+    <p class="tab-desc">Тренировка по вопросам, на которых были допущены ошибки.</p>
+    <p id="compEmpty" class="review-empty" hidden>Ошибок ещё нет — отвечайте на вопросы в тренировке или экзамене.</p>
+    <div id="compActive">
+      <p id="compQIndex" class="q-index"></p>
+      <figure id="compFig" class="fig" hidden>
+        <img id="compImg" alt="" />
+      </figure>
+      <p id="compStem" class="stem"></p>
+      <form id="compForm">
+        <div id="compOpts" class="opts"></div>
+        <div class="actions">
+          <button type="submit" id="compSubmitBtn">Проверить</button>
+          <button type="button" id="compNextBtn" hidden>Следующий</button>
+          <button type="button" id="compExplainBtn" class="btn-secondary" hidden>Объяснить</button>
+        </div>
+      </form>
+      <div class="actions extra-actions">
+        <a id="compPageLink" class="btn-secondary" target="_blank" rel="noopener" hidden>Оригинал</a>
+      </div>
+      <p id="compFeedback" class="feedback" hidden></p>
+      <div id="compExplanation" class="explanation" hidden></div>
+    </div>
+  </section>
+
+  <!-- Balancer tab -->
+  <section id="tabBalancer" class="tab-content" hidden>
+    <p class="tab-desc">Чем больше ошибок — тем чаще вопрос встречается. Верный ответ уменьшает вес.</p>
+    <div id="balStats" class="stats" style="margin-bottom:0.75rem"></div>
+    <p id="balEmpty" class="review-empty" hidden>Балансир пуст — ошибок ещё нет.</p>
+    <div id="balActive">
+      <p id="balQIndex" class="q-index"></p>
+      <figure id="balFig" class="fig" hidden>
+        <img id="balImg" alt="" />
+      </figure>
+      <p id="balStem" class="stem"></p>
+      <form id="balForm">
+        <div id="balOpts" class="opts"></div>
+        <div class="actions">
+          <button type="submit" id="balSubmitBtn">Проверить</button>
+          <button type="button" id="balNextBtn" hidden>Следующий</button>
+          <button type="button" id="balExplainBtn" class="btn-secondary" hidden>Объяснить</button>
+        </div>
+      </form>
+      <div class="actions extra-actions">
+        <a id="balPageLink" class="btn-secondary" target="_blank" rel="noopener" hidden>Оригинал</a>
+      </div>
+      <p id="balFeedback" class="feedback" hidden></p>
+      <div id="balExplanation" class="explanation" hidden></div>
+    </div>
+  </section>
+
+  <script src="/app.js"></script>
+</body>
+</html>
