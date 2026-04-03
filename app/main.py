@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -32,12 +32,14 @@ app = FastAPI(title="Road exam quiz")
 
 _questions: list[dict] = []
 _by_id: dict[str, dict] = {}
-_index_by_id: dict[str, int] = {}
+_by_lang: dict[str, list[dict]] = {}
+_lang_index: dict[str, dict[str, int]] = {}
+_available_langs: list[str] = []
 _exam: dict[str, Any] | None = None
 
 
 def load_questions() -> None:
-    global _questions, _by_id, _index_by_id
+    global _questions, _by_id, _by_lang, _lang_index, _available_langs
     if not QUESTIONS_PATH.is_file():
         raise RuntimeError(
             f"Missing {QUESTIONS_PATH.name}. Run: python extract_questions.py"
@@ -45,7 +47,25 @@ def load_questions() -> None:
     data = json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))
     _questions = data.get("questions", [])
     _by_id = {q["id"]: q for q in _questions}
-    _index_by_id = {q["id"]: i for i, q in enumerate(_questions)}
+    _by_lang = {}
+    for q in _questions:
+        _by_lang.setdefault(q.get("lang", "unknown"), []).append(q)
+    _available_langs = sorted(_by_lang.keys())
+    _lang_index = {}
+    for lang, qs in _by_lang.items():
+        _lang_index[lang] = {q["id"]: i for i, q in enumerate(qs)}
+
+
+def _pool(lang: str | None = None) -> list[dict]:
+    if lang and lang in _by_lang:
+        return _by_lang[lang]
+    return _questions
+
+
+def _qindex(q: dict, lang: str | None = None) -> int:
+    if lang and lang in _lang_index:
+        return _lang_index[lang].get(q["id"], -1)
+    return -1
 
 
 # ---- Persistence helpers ----
@@ -108,15 +128,16 @@ class AnswerBody(BaseModel):
 
 # ---- Payload helpers ----
 
-def _question_payload(q: dict) -> dict:
+def _question_payload(q: dict, lang: str | None = None) -> dict:
     return {
         "id": q["id"],
-        "index": _index_by_id.get(q["id"], -1),
+        "index": _qindex(q, lang),
         "text": q["text"],
         "options": q["options"],
         "image": q.get("image"),
         "source": q.get("source"),
         "page": q.get("page"),
+        "lang": q.get("lang"),
     }
 
 
@@ -145,7 +166,6 @@ def _add_to_balancer(qid: str) -> None:
 
 
 def _record_answer(qid: str, choice: int, ok: bool) -> None:
-    """Update progress and propagate errors to problems/balancer."""
     prog = load_progress()
     prev = prog.get(qid, {})
     prog[qid] = {
@@ -161,34 +181,43 @@ def _record_answer(qid: str, choice: int, ok: bool) -> None:
         _add_to_balancer(qid)
 
 
+# ---- Languages ----
+
+@app.get("/api/languages")
+def get_languages() -> dict:
+    return {"languages": _available_langs}
+
+
 # ---- Practice mode ----
 
 @app.get("/api/question")
-def get_question(mode: str = "random") -> dict:
-    if not _questions:
+def get_question(mode: str = "random", lang: str = Query("")) -> dict:
+    pool = _pool(lang or None)
+    if not pool:
         raise HTTPException(503, "No questions loaded")
     prog = load_progress()
     if mode == "sequential":
-        for q in _questions:
+        for q in pool:
             st = prog.get(q["id"])
             if not st or not st.get("everCorrect"):
-                return _question_payload(q)
-        return _question_payload(_questions[0])
-    pool = [q for q in _questions if not prog.get(q["id"], {}).get("everCorrect")]
-    if not pool:
-        pool = _questions[:]
-    return _question_payload(random.choice(pool))
+                return _question_payload(q, lang or None)
+        return _question_payload(pool[0], lang or None)
+    unanswered = [q for q in pool if not prog.get(q["id"], {}).get("everCorrect")]
+    if not unanswered:
+        unanswered = pool[:]
+    return _question_payload(random.choice(unanswered), lang or None)
 
 
 @app.get("/api/question/at/{index}")
-def get_question_at(index: int) -> dict:
-    if not _questions:
+def get_question_at(index: int, lang: str = Query("")) -> dict:
+    pool = _pool(lang or None)
+    if not pool:
         raise HTTPException(503, "No questions loaded")
-    if index < 0 or index >= len(_questions):
+    if index < 0 or index >= len(pool):
         raise HTTPException(
-            404, f"Index {index} out of range (0..{len(_questions) - 1})"
+            404, f"Index {index} out of range (0..{len(pool) - 1})"
         )
-    return _question_payload(_questions[index])
+    return _question_payload(pool[index], lang or None)
 
 
 @app.get("/api/question/{qid}")
@@ -196,7 +225,7 @@ def get_one(qid: str) -> dict:
     q = _by_id.get(qid)
     if not q:
         raise HTTPException(404, "Unknown question")
-    return _question_payload(q)
+    return _question_payload(q, q.get("lang"))
 
 
 @app.post("/api/answer")
@@ -211,28 +240,34 @@ def post_answer(body: AnswerBody) -> dict:
 
 
 @app.get("/api/progress")
-def get_progress() -> dict:
+def get_progress(lang: str = Query("")) -> dict:
+    pool = _pool(lang or None)
+    pool_ids = {q["id"] for q in pool}
     prog = load_progress()
-    attempted = [v for v in prog.values() if int(v.get("attempts", 0)) > 0]
+    scoped = {k: v for k, v in prog.items() if k in pool_ids}
+    attempted = [v for v in scoped.values() if int(v.get("attempts", 0)) > 0]
     last_correct = sum(1 for v in attempted if v.get("lastCorrect"))
     last_wrong = len(attempted) - last_correct
-    ever_ok = sum(1 for v in prog.values() if v.get("everCorrect"))
+    ever_ok = sum(1 for v in scoped.values() if v.get("everCorrect"))
     return {
-        "totalQuestions": len(_questions),
-        "answeredAtLeastOnce": len(prog),
+        "totalQuestions": len(pool),
+        "answeredAtLeastOnce": len(scoped),
         "lastCorrect": last_correct,
         "lastWrong": last_wrong,
         "everCorrect": ever_ok,
-        "byQuestion": prog,
+        "byQuestion": scoped,
     }
 
 
 @app.get("/api/review")
-def review_lists() -> dict:
+def review_lists(lang: str = Query("")) -> dict:
+    pool_ids = {q["id"] for q in _pool(lang or None)}
     prog = load_progress()
     last_correct: list[dict] = []
     last_wrong: list[dict] = []
     for qid, v in prog.items():
+        if qid not in pool_ids:
+            continue
         if int(v.get("attempts", 0)) < 1:
             continue
         q = _by_id.get(qid)
@@ -255,12 +290,13 @@ def reset_progress() -> dict:
 # ---- Exam mode ----
 
 @app.post("/api/exam/start")
-def exam_start() -> dict:
+def exam_start(lang: str = Query("")) -> dict:
     global _exam
-    pool = _questions[:]
+    pool = _pool(lang or None)
     chosen = random.sample(pool, min(EXAM_SIZE, len(pool)))
     _exam = {
         "ids": [q["id"] for q in chosen],
+        "lang": lang or None,
         "index": 0,
         "correct": 0,
         "wrong": 0,
@@ -270,7 +306,7 @@ def exam_start() -> dict:
     return {
         "total": len(chosen),
         "passThreshold": EXAM_PASS,
-        "question": _question_payload(chosen[0]),
+        "question": _question_payload(chosen[0], lang or None),
         "index": 0,
     }
 
@@ -300,6 +336,7 @@ def exam_answer(body: ExamAnswerBody) -> dict:
     global _exam
     if _exam is None or _exam["finished"]:
         raise HTTPException(400, "No active exam")
+    elang = _exam.get("lang")
     idx = _exam["index"]
     qid = _exam["ids"][idx]
     q = _by_id.get(qid)
@@ -322,7 +359,7 @@ def exam_answer(body: ExamAnswerBody) -> dict:
     if not finished:
         nq = _by_id.get(_exam["ids"][_exam["index"]])
         if nq:
-            next_q = _question_payload(nq)
+            next_q = _question_payload(nq, elang)
     passed = _exam["correct"] >= EXAM_PASS if finished else None
     return {
         "correct": ok,
@@ -337,20 +374,22 @@ def exam_answer(body: ExamAnswerBody) -> dict:
 
 
 @app.post("/api/exam/start-from-problems")
-def exam_start_from_problems() -> dict:
+def exam_start_from_problems(lang: str = Query("")) -> dict:
     global _exam
+    pool_ids = {q["id"] for q in _pool(lang or None)}
     probs = load_problems()
-    prob_qs = [_by_id[qid] for qid in probs if qid in _by_id]
+    prob_qs = [_by_id[qid] for qid in probs if qid in _by_id and qid in pool_ids]
     random.shuffle(prob_qs)
     chosen = prob_qs[:EXAM_SIZE]
     if len(chosen) < EXAM_SIZE:
         remaining = EXAM_SIZE - len(chosen)
         used = {q["id"] for q in chosen}
-        extras = [q for q in _questions if q["id"] not in used]
+        extras = [q for q in _pool(lang or None) if q["id"] not in used]
         random.shuffle(extras)
         chosen.extend(extras[:remaining])
     _exam = {
         "ids": [q["id"] for q in chosen],
+        "lang": lang or None,
         "index": 0,
         "correct": 0,
         "wrong": 0,
@@ -360,7 +399,7 @@ def exam_start_from_problems() -> dict:
     return {
         "total": len(chosen),
         "passThreshold": EXAM_PASS,
-        "question": _question_payload(chosen[0]),
+        "question": _question_payload(chosen[0], lang or None),
         "index": 0,
     }
 
@@ -368,10 +407,13 @@ def exam_start_from_problems() -> dict:
 # ---- Problems (errors from everywhere) ----
 
 @app.get("/api/problems")
-def get_problems() -> dict:
+def get_problems(lang: str = Query("")) -> dict:
+    pool_ids = {q["id"] for q in _pool(lang or None)}
     probs = load_problems()
     items: list[dict] = []
     for qid in probs:
+        if qid not in pool_ids:
+            continue
         q = _by_id.get(qid)
         if q:
             items.append(_preview(q))
@@ -396,37 +438,34 @@ def remove_problem(body: dict) -> dict:
 # ---- Complicated (training from problems pool) ----
 
 @app.get("/api/complicated/question")
-def complicated_question() -> dict:
+def complicated_question(lang: str = Query("")) -> dict:
+    pool_ids = {q["id"] for q in _pool(lang or None)}
     probs = load_problems()
-    if not probs:
+    candidates = [_by_id[qid] for qid in probs if qid in _by_id and qid in pool_ids]
+    if not candidates:
         raise HTTPException(404, "Нет сложных вопросов")
-    pool = [_by_id[qid] for qid in probs if qid in _by_id]
-    if not pool:
-        raise HTTPException(404, "Нет сложных вопросов")
-    return _question_payload(random.choice(pool))
+    return _question_payload(random.choice(candidates), lang or None)
 
 
 # ---- Balancer (weighted repetition) ----
 
 @app.get("/api/balancer/question")
-def balancer_question() -> dict:
+def balancer_question(lang: str = Query("")) -> dict:
+    pool_ids = {q["id"] for q in _pool(lang or None)}
     bal = load_balancer()
-    if not bal:
+    filtered = [qid for qid in bal if qid in pool_ids and qid in _by_id]
+    if not filtered:
         raise HTTPException(404, "Балансир пуст — ошибок ещё нет")
-    valid = [qid for qid in bal if qid in _by_id]
-    if len(valid) != len(bal):
-        save_balancer(valid)
-        bal = valid
-    if not bal:
-        raise HTTPException(404, "Балансир пуст")
-    qid = random.choice(bal)
-    return _question_payload(_by_id[qid])
+    qid = random.choice(filtered)
+    return _question_payload(_by_id[qid], lang or None)
 
 
 @app.get("/api/balancer/stats")
-def balancer_stats() -> dict:
+def balancer_stats(lang: str = Query("")) -> dict:
+    pool_ids = {q["id"] for q in _pool(lang or None)}
     bal = load_balancer()
-    counts = Counter(bal)
+    filtered = [qid for qid in bal if qid in pool_ids]
+    counts = Counter(filtered)
     items = []
     for qid, cnt in counts.most_common():
         q = _by_id.get(qid)
@@ -434,7 +473,7 @@ def balancer_stats() -> dict:
             items.append(
                 {"id": qid, "text": q["text"], "count": cnt, "image": q.get("image")}
             )
-    return {"total": len(bal), "unique": len(counts), "items": items}
+    return {"total": len(filtered), "unique": len(counts), "items": items}
 
 
 @app.post("/api/balancer/answer")
@@ -526,16 +565,17 @@ async def explain_question(body: dict) -> dict:
 
 # ---- Original page image ----
 
-@app.get("/api/page-image/{source}/{page_num}")
+@app.get("/api/page-image/{page_num}/{source:path}")
 def page_image(source: str, page_num: int):
-    if "/" in source or "\\" in source or ".." in source:
+    if ".." in source:
         raise HTTPException(400, "Invalid source")
-    pdf_path = ROOT / source
+    pdf_path = ROOT / "pdfs" / source
     if not pdf_path.is_file():
         raise HTTPException(404, "PDF not found")
 
     cache_dir = ROOT / "media" / "pages"
-    cache_name = f"{Path(source).stem}_p{page_num}.png"
+    safe_name = source.replace("/", "_").replace("\\", "_")
+    cache_name = f"{Path(safe_name).stem}_p{page_num}.png"
     cache_path = cache_dir / cache_name
 
     if not cache_path.is_file():

@@ -13,6 +13,16 @@ body {
 header { margin-bottom: 1rem; }
 h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.5rem; }
 .stats { font-size: 0.9rem; color: #9aa7b2; line-height: 1.4; }
+.header-row { display: flex; align-items: center; gap: 1rem; }
+.lang-select {
+  padding: 0.3rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #3d4a5c;
+  background: #1a222c;
+  color: #e7ecf1;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
 .review-bar { margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .btn-secondary {
   padding: 0.4rem 0.75rem;

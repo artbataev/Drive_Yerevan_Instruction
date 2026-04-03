@@ -7,6 +7,15 @@ let compCurrent = null;
 let compAnswered = false;
 let balCurrent = null;
 let balAnswered = false;
+let currentLang = localStorage.getItem("lang") || "";
+
+function langParam() {
+  return currentLang ? `lang=${encodeURIComponent(currentLang)}` : "";
+}
+function langQS(prefix = "?") {
+  const p = langParam();
+  return p ? prefix + p : "";
+}
 
 /* ---- Tabs ---- */
 const tabs = document.querySelectorAll(".tab");
@@ -30,7 +39,7 @@ tabs.forEach(t => t.addEventListener("click", () => switchTab(t.dataset.tab)));
 
 /* ---- Stats ---- */
 async function refreshStats() {
-  const r = await fetch("/api/progress");
+  const r = await fetch("/api/progress" + langQS());
   const d = await r.json();
   document.getElementById("stats").textContent =
     `В базе: ${d.totalQuestions} · с ответом: ${d.answeredAtLeastOnce} · ` +
@@ -94,7 +103,7 @@ function itemButton(text, onClick) {
 
 function setPageLink(linkEl, q) {
   if (q && q.source && q.page !== undefined && q.page !== null) {
-    linkEl.href = `/api/page-image/${encodeURIComponent(q.source)}/${q.page}`;
+    linkEl.href = `/api/page-image/${q.page}/${q.source}`;
     linkEl.hidden = false;
   } else {
     linkEl.hidden = true;
@@ -152,14 +161,14 @@ function openReview(title, items) {
 
 document.getElementById("btnReviewOk").addEventListener("click", async () => {
   try {
-    const d = await (await fetch("/api/review")).json();
+    const d = await (await fetch("/api/review" + langQS())).json();
     openReview("Верные (последняя попытка)", d.lastCorrect || []);
   } catch (e) { showError(String(e)); }
 });
 
 document.getElementById("btnReviewBad").addEventListener("click", async () => {
   try {
-    const d = await (await fetch("/api/review")).json();
+    const d = await (await fetch("/api/review" + langQS())).json();
     openReview("Ошибки (последняя попытка)", d.lastWrong || []);
   } catch (e) { showError(String(e)); }
 });
@@ -208,7 +217,7 @@ function renderQuestion(q) {
 
 async function loadQuestion() {
   try {
-    const r = await fetch("/api/question?mode=random");
+    const r = await fetch("/api/question?mode=random&" + langParam());
     if (!r.ok) throw new Error(await r.text() || r.statusText);
     renderQuestion(await r.json());
   } catch (e) { showError(String(e)); }
@@ -224,7 +233,7 @@ async function loadQuestionById(id) {
 
 async function loadQuestionAt(index) {
   try {
-    const r = await fetch("/api/question/at/" + index);
+    const r = await fetch("/api/question/at/" + index + langQS());
     if (!r.ok) throw new Error(await r.text() || r.statusText);
     renderQuestion(await r.json());
   } catch (e) { showError(String(e)); }
@@ -286,7 +295,7 @@ function showExamQuestion(q, index, total, correct, wrong) {
 
 document.getElementById("btnExamStart").addEventListener("click", async () => {
   try {
-    const r = await fetch("/api/exam/start", { method: "POST" });
+    const r = await fetch("/api/exam/start" + langQS(), { method: "POST" });
     const d = await r.json();
     showExamQuestion(d.question, d.index, d.total, 0, 0);
   } catch (e) { alert(String(e)); }
@@ -348,7 +357,7 @@ function showExamResult(d) {
 
 async function loadProblemsTab() {
   try {
-    const d = await (await fetch("/api/problems")).json();
+    const d = await (await fetch("/api/problems" + langQS())).json();
     const list = document.getElementById("problemsList");
     const empty = document.getElementById("problemsEmpty");
     list.innerHTML = "";
@@ -370,7 +379,7 @@ async function loadProblemsTab() {
 
 document.getElementById("btnProblemsExam").addEventListener("click", async () => {
   try {
-    const r = await fetch("/api/exam/start-from-problems", { method: "POST" });
+    const r = await fetch("/api/exam/start-from-problems" + langQS(), { method: "POST" });
     const d = await r.json();
     switchTab("exam");
     showExamQuestion(d.question, d.index, d.total, 0, 0);
@@ -389,7 +398,7 @@ async function loadComplicatedQuestion() {
   const empty = document.getElementById("compEmpty");
   const active = document.getElementById("compActive");
   try {
-    const r = await fetch("/api/complicated/question");
+    const r = await fetch("/api/complicated/question" + langQS());
     if (r.status === 404) {
       empty.hidden = false;
       active.hidden = true;
@@ -459,7 +468,7 @@ async function loadBalancerQuestion() {
   const active = document.getElementById("balActive");
   const statsEl = document.getElementById("balStats");
   try {
-    const sr = await fetch("/api/balancer/stats");
+    const sr = await fetch("/api/balancer/stats" + langQS());
     const sd = await sr.json();
     statsEl.textContent = `В балансире: ${sd.total} записей (${sd.unique} уникальных)`;
     if (sd.total === 0) {
@@ -467,7 +476,7 @@ async function loadBalancerQuestion() {
       active.hidden = true;
       return;
     }
-    const r = await fetch("/api/balancer/question");
+    const r = await fetch("/api/balancer/question" + langQS());
     if (r.status === 404) {
       empty.hidden = false;
       active.hidden = true;
@@ -530,6 +539,36 @@ document.getElementById("balExplainBtn").addEventListener("click", () => {
 });
 
 
+/* ---- Language selector ---- */
+async function loadLanguages() {
+  const r = await fetch("/api/languages");
+  const d = await r.json();
+  const sel = document.getElementById("langSelect");
+  sel.innerHTML = "";
+  d.languages.forEach(lang => {
+    const opt = document.createElement("option");
+    opt.value = lang;
+    opt.textContent = lang.toUpperCase();
+    sel.appendChild(opt);
+  });
+  if (currentLang && d.languages.includes(currentLang)) {
+    sel.value = currentLang;
+  } else if (d.languages.length > 0) {
+    currentLang = d.languages[0];
+    sel.value = currentLang;
+    localStorage.setItem("lang", currentLang);
+  }
+}
+
+document.getElementById("langSelect").addEventListener("change", (e) => {
+  currentLang = e.target.value;
+  localStorage.setItem("lang", currentLang);
+  refreshStats();
+  loadQuestion();
+});
+
 /* ---- Init ---- */
-refreshStats();
-loadQuestion();
+loadLanguages().then(() => {
+  refreshStats();
+  loadQuestion();
+});

@@ -16,7 +16,7 @@ from pathlib import Path
 import fitz
 
 ROOT = Path(__file__).resolve().parent
-PDF_GLOB = "*.pdf"
+PDF_DIR = ROOT / "pdfs"
 OUT_JSON = ROOT / "questions.json"
 MEDIA_DIR = ROOT / "media"
 ANS_LINE = re.compile(r"отв\s*[^\d\n]*(\d+)\s*$", re.UNICODE)
@@ -220,6 +220,7 @@ def cell_clip(page: fitz.Page, cell: fitz.Rect) -> fitz.Rect:
 def extract_from_pdf(pdf_path: Path, dpi: int = 144) -> list[dict]:
     out: list[dict] = []
     pdf_stem = pdf_path.stem
+    source_rel = str(pdf_path.relative_to(PDF_DIR))
     doc = fitz.open(pdf_path)
     mat = fitz.Matrix(dpi / 72, dpi / 72)
 
@@ -242,7 +243,7 @@ def extract_from_pdf(pdf_path: Path, dpi: int = 144) -> list[dict]:
                 out.append(
                     {
                         "id": qid,
-                        "source": pdf_path.name,
+                        "source": source_rel,
                         "page": page_index,
                         "image": f"media/{img_name}",
                         "text": q["stem"],
@@ -262,7 +263,7 @@ def extract_from_pdf(pdf_path: Path, dpi: int = 144) -> list[dict]:
                 out.append(
                     {
                         "id": qid,
-                        "source": pdf_path.name,
+                        "source": source_rel,
                         "page": page_index,
                         "image": f"media/{img_name}",
                         "text": q["stem"],
@@ -276,16 +277,20 @@ def extract_from_pdf(pdf_path: Path, dpi: int = 144) -> list[dict]:
 
 
 def main() -> None:
-    pdfs = sorted(ROOT.glob(PDF_GLOB))
+    pdfs = sorted(PDF_DIR.rglob("*.pdf"))
     if not pdfs:
-        print("No PDF files found.", file=sys.stderr)
+        print("No PDF files found in", PDF_DIR, file=sys.stderr)
         sys.exit(1)
     all_q: list[dict] = []
     for pdf in pdfs:
         if pdf.name.startswith("."):
             continue
-        print("Extracting", pdf.name, "...", flush=True)
-        all_q.extend(extract_from_pdf(pdf))
+        lang = pdf.parent.name if pdf.parent != PDF_DIR else "unknown"
+        print(f"Extracting [{lang}] {pdf.name} ...", flush=True)
+        qs = extract_from_pdf(pdf)
+        for q in qs:
+            q["lang"] = lang
+        all_q.extend(qs)
     payload = {"version": 1, "count": len(all_q), "questions": all_q}
     OUT_JSON.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
