@@ -1,3 +1,5 @@
+// TODO: add UI text switching based on selected language 
+
 /* ---- Globals ---- */
 let current = null;
 let answered = false;
@@ -42,8 +44,8 @@ async function refreshStats() {
   const r = await fetch("/api/progress" + langQS());
   const d = await r.json();
   document.getElementById("stats").textContent =
-    `В базе: ${d.totalQuestions} · с ответом: ${d.answeredAtLeastOnce} · ` +
-    `верно: ${d.lastCorrect} · неверно: ${d.lastWrong}`;
+    `Total: ${d.totalQuestions} · answered: ${d.answeredAtLeastOnce} · ` +
+    `correct: ${d.lastCorrect} · wrong: ${d.lastWrong}`;
 }
 
 function showError(msg) {
@@ -112,12 +114,12 @@ function setPageLink(linkEl, q) {
 
 function renderQIndex(container, q) {
   const idx = q.index !== undefined && q.index >= 0 ? q.index : null;
-  container.textContent = idx !== null ? `Вопрос ${idx + 1}` : "";
+  container.textContent = idx !== null ? `Question ${idx + 1}` : "";
 }
 
 async function fetchExplanation(qid, container) {
   container.hidden = false;
-  container.textContent = "Загрузка объяснения...";
+  container.textContent = "Loading explanation...";
   try {
     const r = await fetch("/api/explain", {
       method: "POST",
@@ -126,13 +128,13 @@ async function fetchExplanation(qid, container) {
     });
     if (!r.ok) {
       const t = await r.text();
-      container.textContent = "Ошибка: " + t;
+      container.textContent = "Error: " + t;
       return;
     }
     const d = await r.json();
-    container.textContent = d.explanation || "Нет объяснения";
+    container.textContent = d.explanation || "No explanation";
   } catch (e) {
-    container.textContent = "Ошибка: " + String(e);
+    container.textContent = "Error: " + String(e);
   }
 }
 
@@ -146,7 +148,7 @@ function openReview(title, items) {
   if (items.length === 0) {
     const li = document.createElement("li");
     li.className = "review-empty";
-    li.textContent = "Пока пусто";
+    li.textContent = "Empty";
     ul.appendChild(li);
   } else {
     items.forEach(row => {
@@ -162,14 +164,14 @@ function openReview(title, items) {
 document.getElementById("btnReviewOk").addEventListener("click", async () => {
   try {
     const d = await (await fetch("/api/review" + langQS())).json();
-    openReview("Верные (последняя попытка)", d.lastCorrect || []);
+    openReview("Correct (last attempt)", d.lastCorrect || []);
   } catch (e) { showError(String(e)); }
 });
 
 document.getElementById("btnReviewBad").addEventListener("click", async () => {
   try {
     const d = await (await fetch("/api/review" + langQS())).json();
-    openReview("Ошибки (последняя попытка)", d.lastWrong || []);
+    openReview("Wrong (last attempt)", d.lastWrong || []);
   } catch (e) { showError(String(e)); }
 });
 
@@ -178,7 +180,7 @@ document.getElementById("reviewClose").addEventListener("click", () => {
 });
 
 document.getElementById("btnReset").addEventListener("click", async () => {
-  if (!confirm("Сбросить весь прогресс?")) return;
+  if (!confirm("Reset all progress?")) return;
   await fetch("/api/progress/reset", { method: "POST" });
   document.getElementById("reviewPanel").hidden = true;
   refreshStats();
@@ -256,7 +258,7 @@ document.getElementById("form").addEventListener("submit", async (e) => {
   const fb = document.getElementById("feedback");
   fb.hidden = false;
   fb.className = "feedback " + (d.correct ? "ok" : "bad");
-  fb.textContent = d.correct ? "Верно!" : `Неверно. Правильный ответ: ${d.correctIndex + 1}.`;
+  fb.textContent = d.correct ? "Correct!" : `Wrong. Correct answer: ${d.correctIndex + 1}.`;
   document.getElementById("submitBtn").disabled = true;
   document.getElementById("nextBtn").hidden = false;
   document.getElementById("explainBtn").hidden = false;
@@ -277,7 +279,7 @@ function showExamQuestion(q, index, total, correct, wrong) {
   examAnswered = false;
   const maxWrong = total - 18;
   document.getElementById("examProgress").textContent =
-    `Вопрос ${index + 1} / ${total}  —  верно: ${correct}  ·  неверно: ${wrong} (макс. ${maxWrong})`;
+    `Question ${index + 1} / ${total}  —  correct: ${correct}  ·  wrong: ${wrong} (max ${maxWrong})`;
   showImage(document.getElementById("examFig"), document.getElementById("examImg"), q.image);
   renderQIndex(document.getElementById("examQIndex"), q);
   document.getElementById("examStem").textContent = q.text || "";
@@ -318,7 +320,7 @@ document.getElementById("examForm").addEventListener("submit", async (e) => {
   const fb = document.getElementById("examFeedback");
   fb.hidden = false;
   fb.className = "feedback " + (d.correct ? "ok" : "bad");
-  fb.textContent = d.correct ? "Верно!" : `Неверно. Правильный ответ: ${d.correctIndex + 1}.`;
+  fb.textContent = d.correct ? "Correct!" : `Wrong. Correct answer: ${d.correctIndex + 1}.`;
   document.getElementById("examSubmitBtn").disabled = true;
   document.getElementById("examExplainBtn").hidden = false;
   if (d.finished) {
@@ -341,10 +343,10 @@ function showExamResult(d) {
   const passed = d.passed;
   el.className = "exam-result " + (passed ? "passed" : "failed");
   el.innerHTML =
-    `<div class="big">${passed ? "СДАНО" : "НЕ СДАНО"}</div>` +
-    `<div>Правильных: ${d.score.correct} из ${d.total}</div>` +
-    `<div>Ошибок: ${d.score.wrong} (допустимо: ${d.total - 18})</div>` +
-    `<button type="button" id="examAgain" class="btn-primary">Пройти ещё раз</button>`;
+    `<div class="big">${passed ? "PASSED" : "FAILED"}</div>` +
+    `<div>Correct: ${d.score.correct} out of ${d.total}</div>` +
+    `<div>Mistakes: ${d.score.wrong} (allowed: ${d.total - 18})</div>` +
+    `<button type="button" id="examAgain" class="btn-primary">Try again</button>`;
   document.getElementById("examActive").hidden = true;
   el.hidden = false;
   el.querySelector("#examAgain").addEventListener("click", () => {
@@ -362,7 +364,7 @@ async function loadProblemsTab() {
     const empty = document.getElementById("problemsEmpty");
     list.innerHTML = "";
     document.getElementById("problemsCount").textContent =
-      `Ошибки: ${d.count} вопросов`;
+      `Mistakes: ${d.count} questions`;
     if (d.problems.length === 0) {
       empty.hidden = false;
     } else {
@@ -387,7 +389,7 @@ document.getElementById("btnProblemsExam").addEventListener("click", async () =>
 });
 
 document.getElementById("btnProblemsClear").addEventListener("click", async () => {
-  if (!confirm("Очистить список ошибок?")) return;
+  if (!confirm("Clear all mistakes?")) return;
   await fetch("/api/problems/clear", { method: "POST" });
   loadProblemsTab();
 });
@@ -447,7 +449,7 @@ document.getElementById("compForm").addEventListener("submit", async (e) => {
   const fb = document.getElementById("compFeedback");
   fb.hidden = false;
   fb.className = "feedback " + (d.correct ? "ok" : "bad");
-  fb.textContent = d.correct ? "Верно!" : `Неверно. Правильный ответ: ${d.correctIndex + 1}.`;
+  fb.textContent = d.correct ? "Correct!" : `Wrong. Correct answer: ${d.correctIndex + 1}.`;
   document.getElementById("compSubmitBtn").disabled = true;
   document.getElementById("compNextBtn").hidden = false;
   document.getElementById("compExplainBtn").hidden = false;
@@ -470,7 +472,7 @@ async function loadBalancerQuestion() {
   try {
     const sr = await fetch("/api/balancer/stats" + langQS());
     const sd = await sr.json();
-    statsEl.textContent = `В балансире: ${sd.total} записей (${sd.unique} уникальных)`;
+    statsEl.textContent = `Balancer: ${sd.total} entries (${sd.unique} unique)`;
     if (sd.total === 0) {
       empty.hidden = false;
       active.hidden = true;
@@ -487,7 +489,7 @@ async function loadBalancerQuestion() {
     active.hidden = false;
     renderBalancerQuestion(await r.json());
   } catch (e) {
-    statsEl.textContent = "В балансире: 0 записей";
+    statsEl.textContent = "Balancer: 0 entries";
     empty.hidden = false;
     active.hidden = true;
   }
@@ -525,7 +527,7 @@ document.getElementById("balForm").addEventListener("submit", async (e) => {
   const fb = document.getElementById("balFeedback");
   fb.hidden = false;
   fb.className = "feedback " + (d.correct ? "ok" : "bad");
-  fb.textContent = d.correct ? "Верно!" : `Неверно. Правильный ответ: ${d.correctIndex + 1}.`;
+  fb.textContent = d.correct ? "Correct!" : `Wrong. Correct answer: ${d.correctIndex + 1}.`;
   document.getElementById("balSubmitBtn").disabled = true;
   document.getElementById("balNextBtn").hidden = false;
   document.getElementById("balExplainBtn").hidden = false;
