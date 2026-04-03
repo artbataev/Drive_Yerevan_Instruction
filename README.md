@@ -16,12 +16,11 @@ source .venv/bin/activate
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Extract questions from PDFs (generates questions.json + media/)
-python extract_questions.py
-
-# 4. Start the web app
+# 3. Start the web app
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+Pre-extracted images and `questions.json` are already included in the repo, so you can start the app right away. Re-running extraction is only needed when you add new PDFs (see below).
 
 Open [http://localhost:8000](http://localhost:8000) in your browser.
 
@@ -63,8 +62,8 @@ Without the key the app works normally — the "Explain" button will just show a
 
 ```
 ├── pdfs/                  # Source PDF tickets (by language)
-├── media/                 # Extracted question images (auto-generated)
-├── questions.json         # Extracted questions (auto-generated)
+├── media/                 # Extracted question images (tracked via Git LFS)
+├── questions.json         # Extracted questions
 ├── extract_questions.py   # PDF → questions.json + images
 ├── app/
 │   └── main.py            # FastAPI backend
