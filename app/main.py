@@ -11,8 +11,10 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from openai import AsyncOpenAI
 
 load_dotenv()
 
@@ -23,7 +25,9 @@ PROBLEMS_PATH = ROOT / "problems.json"
 BALANCER_PATH = ROOT / "balancer.json"
 STATIC_DIR = ROOT / "static"
 
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "google/gemini-2.5-pro")
 
 EXAM_SIZE = 20
 EXAM_PASS = 18
@@ -514,8 +518,8 @@ async def explain_question(body: dict) -> dict:
     q = _by_id.get(qid)
     if not q:
         raise HTTPException(404, "Unknown question")
-    if not NVIDIA_API_KEY:
-        raise HTTPException(500, "NVIDIA_API_KEY not configured in .env")
+    if not LLM_API_KEY:
+        raise HTTPException(500, "LLM_API_KEY not configured in .env")
 
     text = q["text"]
     options = q["options"]
@@ -547,14 +551,12 @@ async def explain_question(body: dict) -> dict:
     content.append({"type": "text", "text": prompt})
 
     try:
-        from openai import AsyncOpenAI
-
         client = AsyncOpenAI(
-            api_key=NVIDIA_API_KEY,
-            base_url="https://inference-api.nvidia.com",
+            api_key=LLM_API_KEY,
+            base_url=LLM_BASE_URL,
         )
         response = await client.chat.completions.create(
-            model="gcp/google/gemini-2.5-pro",
+            model=LLM_MODEL,
             messages=[{"role": "user", "content": content}],
             temperature=0.7,
         )
@@ -591,8 +593,6 @@ def page_image(source: str, page_num: int):
         cache_dir.mkdir(parents=True, exist_ok=True)
         pix.save(str(cache_path))
         doc.close()
-
-    from fastapi.responses import FileResponse
 
     return FileResponse(cache_path, media_type="image/png")
 

@@ -54,7 +54,7 @@ The language selector in the app header lets you switch between available langua
 The app can call an external LLM API to explain answers. To enable it:
 
 1. Copy the example env file: `cp .env.example .env`
-2. Fill in your API key in `.env`
+2. Fill in your API key and specify model provider URL in `.env`
 
 Without the key the app works normally — the "Explain" button will just show an error.
 
